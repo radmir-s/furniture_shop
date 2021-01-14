@@ -1,5 +1,8 @@
 from bs4 import BeautifulSoup
 import requests
+from datetime import datetime
+from zipfile import ZipFile, ZIP_DEFLATED
+from os import remove
 
 
 def collect_item_urls(url):
@@ -10,7 +13,7 @@ def collect_item_urls(url):
     for item in items:
         tail = item.find(class_="wsite-com-link wsite-com-category-product-link ")['href']
         TAIL = tail.upper()
-        if 'NEW_ITEM_COMING_SOON' not in TAIL and 'OUT_OF_STOCK' not in TAIL and 'SOLD_OUT' not in TAIL:
+        if 'NEW_ITEM_COMING_SOON' not in TAIL:
             links.append('https://www.happyhomesindustries.com' + tail)
     return links
 
@@ -23,6 +26,7 @@ class Item:
         self.picture_link = 'https://www.happyhomesindustries.com' + soup.find('a', class_="cloud-zoom")['href']
         self.title = soup.find(id="wsite-com-product-title").text.strip()
         self.description = [par.text for par in soup.find_all("p") if par.text]
+        self.sold_out = soup.find(id="wsite-com-product-inventory-out-of-stock-message").text.strip()
 
     @property
     def prices(self, cheap=100):
@@ -39,8 +43,40 @@ class Item:
 
     def save_image(self):
         req = requests.get(self.picture_link)
-        with open(self.title + '.jpg', 'wb') as f:
+        image_name = self.title + '.jpg'
+        with open(image_name, 'wb') as f:
             f.write(req.content)
+        return image_name
+
+
+def data_from_txt(file_name):
+    with open(file_name, "r") as file:
+        return file.read().split('\n')
+
+
+def store_items_data(items):
+    zip_file_name = "furniture " + datetime.now().strftime("%m-%d-%Y %H-%M-%S") + ".zip"
+    csv_name = zip_file_name[:-4] + ".csv"
+    zip_file = ZipFile(zip_file_name, "w")
+    with open(csv_name, mode='w') as file:
+        file.write('#, Title, Sold_out?, Description, Link \n')
+        count = 1
+        for item in items:
+            file.write(f"{count}, {item.title}, {item.sold_out}, {item.description}, {item.url}\n")
+            image_name = item.save_image()
+            zip_file.write(image_name, compress_type=ZIP_DEFLATED)
+            remove(image_name)
+            count += 1
+    zip_file.write(csv_name, compress_type=ZIP_DEFLATED)
+    remove(csv_name)
+    return zip_file_name
+
+
+def get_item_links():
+    item_links = []
+    for url in links_from_txt('section_links.txt'):
+        item_links.extend(collect_item_urls(url))
+    return item_links
 
 
 def links_from_txt(file_name):
@@ -48,17 +84,14 @@ def links_from_txt(file_name):
         return file.read().split('\n')
 
 
-def store_links(links):
-    with open("item_links.txt", mode='w') as file:
-        for link in links:
-            file.write(link + '\n')
+def get_items(item_links):
+    items = []
+    for link in item_links:
+        items.append(Item(link))
+    return items
 
 
-item_links = []
-for url in links_from_txt('section_links.txt'):
-    item_links.extend(collect_item_urls(url))
-store_links(item_links)
-
-items = []
-for link in item_links:
-    items.append(Item(link))
+if __name__ == "__main__":
+    item_links = get_item_links()
+    items = get_items(item_links)
+    store_items_data(items)
