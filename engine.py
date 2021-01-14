@@ -45,7 +45,7 @@ class Item:
         req = requests.get(self.picture_link)
         image_name = self.title + '.jpg'
         if '/' in image_name:
-            image_name = image_name.split('/')[-1]
+            image_name = "-".join(image_name.split('/'))
         with open(image_name, 'wb') as f:
             f.write(req.content)
         return image_name
